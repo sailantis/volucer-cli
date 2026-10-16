@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (PHP ${{ matrix.php }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends of what composer.json allows. 8.2 is the floor the manifest
+        # promises, and an unverified floor is how a manifest comes to be wrong.
+        php: ['8.2', '8.3']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          # The suite exercises both transports, so the curl half needs curl and
+          # the zip half needs zip. `setup-php` provides both by default; naming
+          # them here makes that a requirement rather than an accident of the
+          # runner image.
+          extensions: curl, zip, hash, json
+          coverage: none
+          tools: composer
+
+      - name: Validate composer.json
+        # `--strict` rather than plain validate: it fails on warnings, and these
+        # are the warnings that matter for a package about to be published - an
+        # unbound version, a missing license.
+        run: composer validate --strict
+
+      # `git ls-files` rather than `find`, because it lists exactly the files
+      # that will be published and works identically on all three runners.
+      - name: Lint
+        shell: bash
+        run: |
+          status=0
+          for file in $(git ls-files '*.php') bin/volucer-cli; do
+            if ! php -l "$file" >/dev/null; then
+              php -l "$file"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Test
+        run: php tests/run.php
+
+  install:
+    name: Install (as a user would)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@2.40.0
+        with:
+          php-version: '8.3'
+          extensions: curl, zip
+          coverage: none
+          tools: composer
+
+      # The suite runs the classes directly, which is not the same as the package
+      # installing. This is the half that catches a wrong `bin` entry, a
+      # namespace that does not match its directory, or an autoload that only
+      # works because the test harness requires `autoload.php` by hand.
+      - name: Require this package into a fresh project
+        run: |
+          mkdir -p "$RUNNER_TEMP/consumer"
+          cd "$RUNNER_TEMP/consumer"
+          composer init --no-interaction --name=test/consumer --stability=dev
+          composer config repositories.local path "$GITHUB_WORKSPACE"
+          composer require --no-interaction 'sailantis/volucer-cli:*'
+
+      # The proxy Composer writes is what a user actually runs, so it is what is
+      # run. `--version` proves the autoloader resolves without a network
+      # request, which a CI runner should not depend on.
+      - name: Run the installed proxy
+        run: |
+          cd "$RUNNER_TEMP/consumer"
+          ./vendor/bin/volucer-cli --version
+
+      # A refusal is the other half of the contract: it must come out on stderr
+      # with a non-zero status rather than as a stack trace.
+      - name: Run a refusal
+        run: |
+          cd "$RUNNER_TEMP/consumer"
+          if ./vendor/bin/volucer-cli --os bsd; then
+            echo "::error::an unsupported platform was not refused"
+            exit 1
+          fi
+
+      # The name clash this package is designed around. If the tool had been
+      # named `volucer`, Composer's proxy and the binary it downloads would share
+      # a path, and the second run would execute the server.
+      - name: The proxy is the tool, not the binary
+        run: |
+          cd "$RUNNER_TEMP/consumer"
+          test -f vendor/bin/volucer-cli || {
+            echo "::error::no volucer-cli proxy in vendor/bin"
+            exit 1
+          }
+          if [ -e vendor/bin/volucer ]; then
+            echo "::error::vendor/bin/volucer exists, so the proxy and the binary collide"
+            exit 1
+          fi
