@@ -1,0 +1,47 @@
+{
+    "name": "sailantis/volucer-cli",
+    "description": "Downloads the volucer binary for this platform from GitHub Releases, and verifies its checksum.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "volucer",
+        "cli",
+        "installer",
+        "binary",
+        "download",
+        "application-server"
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ext-hash": "*",
+        "ext-json": "*"
+    },
+    "bin": [
+        "bin/volucer-cli"
+    ],
+    "support": {
+        "issues": "https://github.com/sailantis/volucer-cli/issues",
+        "source": "https://github.com/sailantis/volucer-cli"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "0.1.x-dev"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Volucer\\Cli\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Volucer\\Cli\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "php tests/run.php"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

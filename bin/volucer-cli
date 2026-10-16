@@ -1,0 +1,30 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * The volucer binary downloader.
+ *
+ *     composer require sailantis/volucer-cli
+ *     vendor/bin/volucer-cli
+ *
+ * Named `volucer-cli` rather than `volucer` on purpose. Composer puts a PHP
+ * proxy for this script in `vendor/bin`, and the whole job of this script is to
+ * install a *binary* also called `volucer` - so if the two shared a name the
+ * download would overwrite its own proxy, and the next run of
+ * `vendor/bin/volucer` would execute the Rust server with `get-binary` as an
+ * argument instead of the downloader. The `bin` entry in `composer.json`, this
+ * filename and the default download location are one decision, not three.
+ */
+
+$_composer_autoload = $_composer_autoload_path ?? __DIR__ . '/../autoload.php';
+
+if (!is_file($_composer_autoload)) {
+    fwrite(STDERR, "volucer-cli: no autoloader found; run `composer install` first\n");
+    exit(1);
+}
+
+require $_composer_autoload;
+
+exit(\Volucer\Cli\Cli::main($argv));
