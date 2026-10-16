@@ -38,7 +38,14 @@ $prefix = 'volucer-0.1.0-x86_64-unknown-linux-gnu';
 
 $good = FixtureArchive::write(
     FixtureArchive::tarGz(
-        FixtureArchive::tarEntry($prefix . '/volucer', "#!/bin/sh\necho volucer\n"),
+        // The mode is explicit, and it matters: a real release archive is built
+        // with `cp` from `target/release`, so the binary inside carries 0755.
+        // The first version of this test left the mode at its default of 0644
+        // and then asserted the extracted file was executable, which failed on
+        // Linux and macOS and passed on Windows - where there is no executable
+        // bit to check. A fixture that does not carry the property the code
+        // relies on cannot test the code.
+        FixtureArchive::tarEntry($prefix . '/volucer', "#!/bin/sh\necho volucer\n", '0', 0o755),
         FixtureArchive::tarEntry($prefix . '/README.md', 'the readme'),
     ),
     'tar.gz',
@@ -72,6 +79,12 @@ if (DIRECTORY_SEPARATOR === '/') {
     Assert::true(
         is_executable($out . DIRECTORY_SEPARATOR . $prefix . DIRECTORY_SEPARATOR . 'volucer'),
         'the archive\'s mode makes the binary executable',
+    );
+    // And it is per-entry rather than a blanket 0755: a document must not come
+    // out executable, which a blanket chmod would do unnoticed.
+    Assert::true(
+        !is_executable($out . DIRECTORY_SEPARATOR . $prefix . DIRECTORY_SEPARATOR . 'README.md'),
+        'a non-executable entry does not come out executable',
     );
 }
 
@@ -264,6 +277,5 @@ $remove($tmpRoot);
 foreach (glob(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fixture-*') ?: [] as $left) {
     @unlink($left);
 }
-unlink($good);
 
 exit(Assert::report('ArchiveTest'));
